@@ -1,0 +1,345 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>Anaesthesia Case App – v0.4.2c TEST</title>
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+
+<!-- EXCEL LIB -->
+<script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
+
+<!-- PDF LIBS -->
+<script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf-autotable/3.5.29/jspdf.plugin.autotable.min.js"></script>
+
+<style>
+*{box-sizing:border-box}
+body{margin:0;font-family:Segoe UI,Roboto,Arial;background:#f4f6f9;color:#212529}
+.header{background:#0d6efd;color:#fff;padding:14px;text-align:center}
+.nav{display:flex;flex-wrap:wrap;gap:6px;padding:8px;background:#fff;box-shadow:0 2px 4px rgba(0,0,0,.1)}
+.nav button{flex:1;min-width:110px;padding:9px;border:none;border-radius:6px;background:#e9ecef;font-weight:600}
+.nav button.active{background:#0d6efd;color:#fff}
+.section{display:none;padding:12px}
+.section.active{display:block}
+.card{background:#fff;padding:14px;border-radius:10px;box-shadow:0 2px 6px rgba(0,0,0,.08);margin-bottom:12px}
+label{font-weight:600;font-size:13px}
+input,select,textarea,button{
+  width:100%;padding:8px;margin:6px 0;border-radius:6px;
+  border:1px solid #ccc;font-size:14px
+}
+button.primary{background:#0d6efd;color:#fff;border:none}
+table{width:100%;border-collapse:collapse;font-size:13px}
+th,td{border:1px solid #ddd;padding:6px}
+th{background:#0d6efd;color:#fff}
+tr:nth-child(even){background:#f8f9fa}
+.amount{color:#198754;font-weight:700}
+.totals{background:#eef7ee;font-weight:700}
+.footer{text-align:center;font-size:12px;color:#6c757d;padding:10px}
+.filters{display:grid;grid-template-columns:1fr 1fr;gap:8px}
+@media (min-width:720px){.filters{grid-template-columns:1fr 1fr 1fr 1fr 1fr}}
+</style>
+</head>
+
+<body>
+
+<div class="header">
+  <h3>Anaesthesia Case Record</h3>
+  <div>v0.4.2c – PDF Export (TEST)</div>
+</div>
+
+<div class="nav">
+  <button onclick="show('ana',this)">Anaesthetist</button>
+  <button onclick="show('hospital',this)">Hospital</button>
+  <button onclick="show('case',this)">New Case</button>
+  <button onclick="show('list',this)">Cases</button>
+  <button onclick="show('receipt',this)">Receipt</button>
+  <button class="active" onclick="show('summary',this)">Summary</button>
+</div>
+
+<!-- ANAESTHETIST -->
+<div id="ana" class="section">
+  <div class="card">
+    <h4>Anaesthetist Profile</h4>
+    <label>Name</label><input id="a_name">
+    <label>Qualification</label><input id="a_qual">
+    <label>Registration No</label><input id="a_reg">
+    <label>Mobile</label><input id="a_mobile">
+    <button class="primary" onclick="saveAna()">Save / Update Profile</button>
+  </div>
+</div>
+
+<!-- HOSPITAL -->
+<div id="hospital" class="section">
+  <div class="card">
+    <h4>Hospital / Clinic</h4>
+    <label>Name</label><input id="h_name">
+    <label>City</label><input id="h_city">
+    <label>Address</label><input id="h_address">
+    <button class="primary" onclick="saveHospital()">Save / Update Hospital</button>
+  </div>
+</div>
+
+<!-- NEW CASE -->
+<div id="case" class="section">
+  <div class="card">
+    <h4>New Case</h4>
+
+    <label>Date</label><input type="date" id="c_date">
+    <label>Patient Name</label><input id="c_patient">
+    <label>Age</label><input id="c_age">
+
+    <label>Sex</label>
+    <input list="sexList" id="c_sex">
+    <datalist id="sexList">
+      <option>Male</option>
+      <option>Female</option>
+      <option>Other</option>
+    </datalist>
+
+    <label>IPD / OPD No</label><input id="c_ipd">
+
+    <label>Surgery</label>
+    <input list="surgeryList" id="c_surgery">
+    <datalist id="surgeryList"></datalist>
+
+    <label>Surgeon</label>
+    <input list="surgeonList" id="c_surgeon">
+    <datalist id="surgeonList"></datalist>
+
+    <label>Anaesthesia Type</label>
+    <input list="anaList" id="c_ana">
+    <datalist id="anaList"></datalist>
+
+    <label>Charges (₹)</label><input id="c_amount">
+
+    <button class="primary" onclick="saveCase()">Save Case</button>
+  </div>
+</div>
+
+<!-- CASE LIST -->
+<div id="list" class="section">
+  <div class="card">
+    <h4>Saved Cases</h4>
+    <table>
+      <thead>
+        <tr><th>Date</th><th>Patient</th><th>Surgery</th><th>₹</th><th>Action</th></tr>
+      </thead>
+      <tbody id="caseTable"></tbody>
+    </table>
+  </div>
+</div>
+
+<!-- RECEIPT -->
+<div id="receipt" class="section">
+  <div class="card">
+    <h4>Receipt</h4>
+    <div id="receiptBody">Select a case from Cases</div>
+  </div>
+</div>
+
+<!-- SUMMARY -->
+<div id="summary" class="section active">
+  <div class="card">
+    <h4>Summary</h4>
+
+    <div class="filters">
+      <select id="filterType" onchange="applyFilter()">
+        <option value="all">All</option>
+        <option value="daily">Daily</option>
+        <option value="monthly">Monthly</option>
+        <option value="yearly">Yearly</option>
+        <option value="range">Date Range</option>
+      </select>
+      <input type="date" id="fromDate" onchange="applyFilter()">
+      <input type="date" id="toDate" onchange="applyFilter()">
+      <button onclick="exportSummaryCSV()">🧾 CSV</button>
+      <button onclick="exportSummaryExcel()">📊 Excel</button>
+      <button class="primary" onclick="exportSummaryPDF()">📄 PDF</button>
+    </div>
+
+    <table style="margin-top:10px">
+      <thead>
+        <tr>
+          <th>Sr</th><th>Date</th><th>Receipt</th><th>Patient</th>
+          <th>Age/Sex</th><th>IPD</th><th>Surgery</th>
+          <th>Surgeon</th><th>Anaesthesia</th><th>₹</th>
+        </tr>
+      </thead>
+      <tbody id="summaryTable"></tbody>
+      <tfoot>
+        <tr class="totals">
+          <td colspan="9">Total Cases: <span id="totalCases">0</span></td>
+          <td class="amount">₹ <span id="totalAmount">0</span></td>
+        </tr>
+      </tfoot>
+    </table>
+  </div>
+</div>
+
+<div class="footer">v0.4.2c – PDF Export TEST</div>
+
+<script>
+let cases = JSON.parse(localStorage.getItem("cases")||"[]");
+let filteredCases = [];
+
+/* LOAD PROFILES */
+(function(){
+  const ana = JSON.parse(localStorage.getItem("ana")||"null");
+  if(ana){a_name.value=ana.name||"";a_qual.value=ana.qual||"";a_reg.value=ana.reg||"";a_mobile.value=ana.mobile||"";}
+  const hosp = JSON.parse(localStorage.getItem("hospital")||"null");
+  if(hosp){h_name.value=hosp.name||"";h_city.value=hosp.city||"";h_address.value=hosp.address||"";}
+})();
+
+/* NAV */
+function show(id,btn){
+  document.querySelectorAll('.section').forEach(s=>s.classList.remove('active'));
+  document.querySelectorAll('.nav button').forEach(b=>b.classList.remove('active'));
+  document.getElementById(id).classList.add('active');
+  if(btn) btn.classList.add('active');
+}
+
+/* SAVE PROFILES */
+function saveAna(){
+  localStorage.setItem("ana",JSON.stringify({name:a_name.value,qual:a_qual.value,reg:a_reg.value,mobile:a_mobile.value}));
+  alert("✔ Anaesthetist profile saved");
+}
+function saveHospital(){
+  localStorage.setItem("hospital",JSON.stringify({name:h_name.value,city:h_city.value,address:h_address.value}));
+  alert("✔ Hospital profile saved");
+}
+
+/* SMART DROPDOWNS */
+function populateDropdowns(){
+  const s=new Set(), g=new Set(), a=new Set();
+  cases.forEach(c=>{if(c.surgery)s.add(c.surgery);if(c.surgeon)g.add(c.surgeon);if(c.ana)a.add(c.ana);});
+  fill("surgeryList",s);fill("surgeonList",g);fill("anaList",a);
+}
+function fill(id,set){const dl=document.getElementById(id);dl.innerHTML="";set.forEach(v=>{const o=document.createElement("option");o.value=v;dl.appendChild(o);});}
+
+/* SAVE CASE */
+function saveCase(){
+  cases.push({id:Date.now(),date:c_date.value,patient:c_patient.value,age:c_age.value,sex:c_sex.value,
+  ipd:c_ipd.value,surgery:c_surgery.value,surgeon:c_surgeon.value,ana:c_ana.value,amount:Number(c_amount.value||0)});
+  localStorage.setItem("cases",JSON.stringify(cases));
+  populateDropdowns();renderCases();applyFilter();alert("Case saved");
+}
+
+/* RENDER */
+function renderCases(){
+  caseTable.innerHTML="";
+  cases.forEach(c=>{
+    caseTable.innerHTML+=`<tr><td>${c.date}</td><td>${c.patient}</td><td>${c.surgery}</td><td>${c.amount}</td>
+    <td><span style="color:#0d6efd;cursor:pointer" onclick="viewReceipt(${c.id})">View</span></td></tr>`;
+  });
+}
+
+/* RECEIPT */
+function numberToWords(n){
+  const a=["","One","Two","Three","Four","Five","Six","Seven","Eight","Nine","Ten","Eleven","Twelve","Thirteen","Fourteen","Fifteen","Sixteen","Seventeen","Eighteen","Nineteen"];
+  const b=["","","Twenty","Thirty","Forty","Fifty","Sixty","Seventy","Eighty","Ninety"];
+  if(n<20)return a[n];
+  if(n<100)return b[Math.floor(n/10)]+" "+a[n%10];
+  if(n<1000)return a[Math.floor(n/100)]+" Hundred "+numberToWords(n%100);
+  if(n<100000)return numberToWords(Math.floor(n/1000))+" Thousand "+numberToWords(n%1000);
+  return numberToWords(Math.floor(n/100000))+" Lakh "+numberToWords(n%100000);
+}
+function viewReceipt(id){
+  const c=cases.find(x=>x.id===id);
+  show('receipt',document.querySelectorAll('.nav button')[4]);
+  receiptBody.innerHTML=`<p><b>Receipt No:</b> ${c.id}</p><p><b>Date:</b> ${c.date}</p><p><b>Patient:</b> ${c.patient}</p>
+  <p><b>Age/Sex:</b> ${c.age}/${c.sex}</p><p><b>IPD:</b> ${c.ipd}</p><p><b>Surgery:</b> ${c.surgery}</p>
+  <p><b>Surgeon:</b> ${c.surgeon}</p><p><b>Anaesthesia:</b> ${c.ana}</p>
+  <p><b>Charges:</b> ₹${c.amount}</p><p><b>Amount in Words:</b> Rupees ${numberToWords(c.amount)} Only</p>`;
+}
+
+/* FILTER + SUMMARY */
+function applyFilter(){
+  const t=filterType.value,f=fromDate.value,to=toDate.value;
+  const today=new Date().toISOString().slice(0,10);
+  filteredCases=[...cases];
+  if(t==="daily")filteredCases=filteredCases.filter(c=>c.date===today);
+  else if(t==="monthly")filteredCases=filteredCases.filter(c=>c.date.startsWith(today.slice(0,7)));
+  else if(t==="yearly")filteredCases=filteredCases.filter(c=>c.date.startsWith(today.slice(0,4)));
+  else if(t==="range"&&f&&to)filteredCases=filteredCases.filter(c=>c.date>=f&&c.date<=to);
+  renderSummary();
+}
+function renderSummary(){
+  summaryTable.innerHTML="";
+  let total=0;
+  filteredCases.forEach((c,i)=>{
+    total+=c.amount;
+    summaryTable.innerHTML+=`<tr><td>${i+1}</td><td>${c.date}</td><td>${c.id}</td><td>${c.patient}</td>
+    <td>${c.age}/${c.sex}</td><td>${c.ipd}</td><td>${c.surgery}</td><td>${c.surgeon}</td><td>${c.ana}</td>
+    <td class="amount">${c.amount}</td></tr>`;
+  });
+  totalCases.innerText=filteredCases.length;
+  totalAmount.innerText=total.toFixed(2);
+}
+
+/* CSV EXPORT */
+function exportSummaryCSV(){
+  if(!filteredCases.length){alert("No data");return;}
+  let csv="Sr No,Date,Patient,Age,Sex,IPD/OPD,Surgery,Surgeon,Anaesthesia,Charges\n";
+  filteredCases.forEach((c,i)=>{
+    csv+=[i+1,c.date,`"${c.patient}"`,c.age,c.sex,c.ipd||"",`"${c.surgery}"`,`"${c.surgeon}"`,`"${c.ana}"`,c.amount].join(",")+"\n";
+  });
+  csv+=`\nTotal Cases,${filteredCases.length}\nTotal Amount,${filteredCases.reduce((s,c)=>s+c.amount,0)}\n`;
+  const a=document.createElement("a");
+  a.href=URL.createObjectURL(new Blob([csv],{type:"text/csv"}));
+  a.download=`Summary_${filterType.value}_${new Date().toISOString().slice(0,10)}.csv`;
+  a.click();
+}
+
+/* EXCEL EXPORT */
+function exportSummaryExcel(){
+  if(!filteredCases.length){alert("No data");return;}
+  const data=[["Sr No","Date","Receipt","Patient","Age","Sex","IPD/OPD","Surgery","Surgeon","Anaesthesia","Charges"]];
+  filteredCases.forEach((c,i)=>{data.push([i+1,c.date,c.id,c.patient,c.age,c.sex,c.ipd||"",c.surgery,c.surgeon,c.ana,c.amount]);});
+  data.push([]);
+  data.push(["Total Cases",filteredCases.length]);
+  data.push(["Total Amount",filteredCases.reduce((s,c)=>s+c.amount,0)]);
+  const ws=XLSX.utils.aoa_to_sheet(data);
+  const wb=XLSX.utils.book_new();
+  XLSX.utils.book_append_sheet(wb,ws,"Summary");
+  XLSX.writeFile(wb,`Summary_${filterType.value}_${new Date().toISOString().slice(0,10)}.xlsx`);
+}
+
+/* PDF EXPORT */
+function exportSummaryPDF(){
+  if(!filteredCases.length){alert("No data");return;}
+
+  const { jsPDF } = window.jspdf;
+  const doc = new jsPDF({orientation:"landscape",unit:"mm",format:"a4"});
+
+  doc.setFontSize(14);
+  doc.text("Anaesthesia Case Summary",14,15);
+
+  const head=[["Sr","Date","Receipt","Patient","Age/Sex","IPD","Surgery","Surgeon","Anaesthesia","₹"]];
+  const body=filteredCases.map((c,i)=>[
+    i+1,c.date,c.id,c.patient,`${c.age}/${c.sex}`,c.ipd||"",c.surgery,c.surgeon,c.ana,c.amount
+  ]);
+
+  doc.autoTable({
+    head:head,
+    body:body,
+    startY:20,
+    theme:"grid",
+    styles:{fontSize:8},
+    headStyles:{fillColor:[13,110,253],textColor:255},
+    margin:{left:8,right:8}
+  });
+
+  const y=doc.lastAutoTable.finalY||20;
+  doc.setFontSize(10);
+  doc.text(`Total Cases: ${filteredCases.length}`,14,y+8);
+  doc.text(`Total Amount: ₹ ${filteredCases.reduce((s,c)=>s+c.amount,0)}`,14,y+14);
+
+  doc.save(`Summary_${filterType.value}_${new Date().toISOString().slice(0,10)}.pdf`);
+}
+
+/* INIT */
+populateDropdowns();renderCases();applyFilter();
+</script>
+
+</body>
+</html>
